@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<project>                                  
+  <executable name="dist/Simulator/debug/ATMEGA4809Test.X.debug.elf">                 
+    <memory name="program">              
+      <units>bytes</units>                 
+      <length>49152</length>                 
+      <used>10735</used>                     
+      <free>38417</free>                     
+    </memory>                              
+    <memory name="data">                 
+      <units>bytes</units>                 
+      <length>6144</length>                 
+      <used>356</used>                     
+      <free>5788</free>                     
+    </memory>                              
+  </executable>                            
+</project>                                 
