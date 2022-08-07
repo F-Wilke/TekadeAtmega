@@ -39,12 +39,15 @@
 
 #define DENC_INPT_bm 0x7C
 #define SIGNAL_STRENGTH_STEPS 11
+#define DISP_DRIVER_PORTMASK 0xC3
+#define DISP_DECODER_PORTMASK 0x1F
 
 
 uint16_t LDR_res;
 float calc_volt;
 
-char display_array[MAX_DISPLAY_STR_LEN] = {10};
+
+char display_array[MAX_DISPLAY_STR_LEN] ;
 char* display_str = &display_array[0];
 uint8_t display_str_len = 0;
 int32_t display_last_shift;
@@ -57,10 +60,11 @@ struct tm* disp_tm_ptr;
 
 
 uint8_t signal_strength;
-bool signal_strength_changed;
+bool signal_strength_changed = true;
 uint8_t sig_str_cmp_vals[SIGNAL_STRENGTH_STEPS] = {0, 4, 8, 12, 18, 27, 35, 45, 60, 80, 100};
 
 uint8_t brightness_factor = 1;
+float brightness_test = 1;
 
 uint8_t RPI_state;
 #define RPI_shut_down 0
@@ -69,7 +73,8 @@ uint8_t RPI_state;
 #define RPI_active 30
 
 
-time_t shutdown_timestamp;
+time_t shutdown_timestamp = UINT32_MAX;
+time_t rpi_os_shutdown_complete = UINT32_MAX;
 
 uint8_t button_states;
 #define PowerButtonbm 0x08;
@@ -83,16 +88,18 @@ struct LED {
     uint8_t     freq;
     bool        enable;
     uint16_t    thresh;
-    bool        tresh_wrapped;
+    bool        thresh_wrapped;
     bool        clock_wrapped;
-    uint8_t     PF_POS;
+    uint8_t     PD_POS;
+    volatile uint8_t *   SET_REGISTER; //+=1: CLR +=2: TGL
+    
 };
 
-struct LED LED_R = {0,0,0,0,0, 0x02};
-struct LED LED_Y = {0,0,0,0,0, 0x01};
-struct LED LED_G = {0,0,0,0,0, 0x04};
+struct LED LED_R = {0,0,0,0,0, 0x04, &PORTD_OUTSET};
+struct LED LED_Y = {0,0,0,0,0, 0x02, &PORTD_OUTSET};
+struct LED LED_G = {0,0,0,0,0, 0x08, &PORTD_OUTSET};
 
-struct LED LED_S = {0,0,0,0,0, 0x08};
+struct LED LED_S = {0,0,0,0,0, 0x04, &PORTE_OUTSET};
 
 char buffer_array[MAX_BUFFER_SIZE];
 char* buffer = &buffer_array[0];
@@ -134,6 +141,7 @@ void handle_PWR_BTN_Press(void)
     else if (RPI_state == RPI_shut_down)
     {
         RPI_RUN_SetHigh();
+        rpi_os_shutdown_complete = UINT32_MAX;
         //TODO: necessary timespan  for boot?
     }
 }
@@ -185,7 +193,7 @@ bool UART_ReadLine(char* buffer)
     while(USART1_IsRxReady())
     {        
         c = USART1_Read();
-        printf("%d", c);
+        printf("%d%c", c, c);
         if(c != '\n' && c != '\r')
         {
             buffer[index++] = c;
@@ -217,34 +225,36 @@ void handle_LED(struct LED* led_ptr)
     {
         if (led_ptr->freq == 0)
         {
-            PORTF_OUTCLR = led_ptr->PF_POS;
+            *(led_ptr->SET_REGISTER + 1 ) = led_ptr->PD_POS; //CLR -> Active Low
         }
-        else if (led_ptr->thresh < RTC.CNT && led_ptr->tresh_wrapped == led_ptr->clock_wrapped)
+        else if (led_ptr->thresh < RTC.CNT && led_ptr->thresh_wrapped == led_ptr->clock_wrapped)
         {
             //toggle
-            PORTF_OUTTGL = led_ptr->PF_POS;
+            *(led_ptr->SET_REGISTER + 2 ) = led_ptr->PD_POS; //TGL
 
-            led_ptr->clock_wrapped = led_ptr->tresh_wrapped = false;            
+            led_ptr->clock_wrapped = led_ptr->thresh_wrapped = false;            
 
             uint16_t prev_thresh = led_ptr->thresh;
-            led_ptr->thresh += 31.25 / led_ptr->freq;
-
-            if (prev_thresh > led_ptr->thresh)
+            led_ptr->thresh += 1000 / led_ptr->freq;
+            
+            if (led_ptr->thresh > RTC.PER)
             {
-                led_ptr->tresh_wrapped = true;
+                led_ptr->thresh %= RTC.PER;
+                led_ptr->thresh_wrapped = true;
             }
         }
-        else if (led_ptr->thresh > RTC.CNT && !led_ptr->tresh_wrapped && led_ptr->clock_wrapped)
+        else if (led_ptr->thresh > RTC.CNT && !led_ptr->thresh_wrapped && led_ptr->clock_wrapped)
         {
             
-            PORTF_OUTTGL = led_ptr->PF_POS;
+            *(led_ptr->SET_REGISTER + 2 ) = led_ptr->PD_POS;
             
             uint16_t prev_thresh = led_ptr->thresh;
-            led_ptr->thresh += 31.25 / led_ptr->freq;
+            led_ptr->thresh += 1000 / led_ptr->freq;
 
-            if (prev_thresh > led_ptr->thresh)
+            if (led_ptr->thresh > RTC.PER)
             {
-                led_ptr->tresh_wrapped = true;
+                led_ptr->thresh %= RTC.PER;
+                led_ptr->thresh_wrapped = true;
             }
 
         }
@@ -252,7 +262,7 @@ void handle_LED(struct LED* led_ptr)
     }
     else 
     {
-        PORTF_OUTSET |= led_ptr->PF_POS;
+        *(led_ptr->SET_REGISTER) |= led_ptr->PD_POS;
     }
 }
 
@@ -265,13 +275,13 @@ void setup_LED(struct LED* led_ptr, char* config_buffer)
     if (led_ptr->freq > 0)
     {
         uint16_t temp_CNT = RTC_ReadCounter();
-        led_ptr->thresh = temp_CNT + 31.25 / led_ptr->freq;
+        led_ptr->thresh = temp_CNT + 1000 / led_ptr->freq;
         
-        PORTF_OUTTGL = led_ptr->PF_POS;
+        *(led_ptr->SET_REGISTER + 2 ) = led_ptr->PD_POS;
 
         if (led_ptr->thresh < temp_CNT)
         {
-            led_ptr->tresh_wrapped = true;
+            led_ptr->thresh_wrapped = true;
         }        
     }
 }
@@ -281,25 +291,31 @@ void init(void)
     /* Initializes MCU, drivers and middleware */
     SYSTEM_Initialize();
     
+    for (uint8_t i = 0; i < MAX_DISPLAY_STR_LEN; i++) 
+    {
+        display_array[i] = 0xa;
+    }
+    
     //register interrupts
     RTC_SetOVFIsrCallback(&handle_RTC_overflow);
     RTC_SetCMPIsrCallback(&handle_RTC_compare);
     RTC_EnableOVFInterrupt();
     RTC_EnableCMPInterrupt();
     
-    PORTF_PWR_BTN_SetInterruptHandler(&handle_PWR_BTN_Press);
-    PORTB_KeyS_A_SetInterruptHandler(&handle_KeyS_A_change);
-    PORTB_KeyS_B_SetInterruptHandler(&handle_KeyS_B_change);
-    PORTB_IGN_SNS_SetInterruptHandler(&handle_IGN_SNS_change);
+    PORTD_PWR_BTN_SetInterruptHandler(&handle_PWR_BTN_Press);
+    
+    PORTA_KeyS_A_SetInterruptHandler(&handle_KeyS_A_change);
+    PORTA_KeyS_B_SetInterruptHandler(&handle_KeyS_B_change);
+    PORTC_IGN_SNS_SetInterruptHandler(&handle_IGN_SNS_change);
     
     //fill display array with 10s   
     
     
-    LED_R.PF_POS = 0x02;
-    LED_Y.PF_POS = 0x01;
-    LED_G.PF_POS = 0x04;
-
-    LED_S.PF_POS = 0x08;
+//    LED_R.PD_POS = 0x02;
+//    LED_Y.PD_POS = 0x01;
+//    LED_G.PD_POS = 0x04;
+//
+//    LED_S.PD_POS = 0x08;
     
     //raspberry wakeup
     
@@ -352,15 +368,24 @@ int main(void)
             //set anode driver
             if (i < 2)
             {
-                VPORTE_OUT = clock_array[i];
+                VPORTB_OUT = ((clock_array[i] & 0x1) * 4 + (clock_array[i] & 0x2) * 16 + (clock_array[i] & 0x4) * 4 + (clock_array[i] & 0x8)) | (VPORTB_OUT & DISP_DRIVER_PORTMASK);
+                
             }
             else
             {
-                VPORTE_OUT = display_str[i-2];
+                VPORTB_OUT = ((display_str[i - 2] & 0x1) * 4 + (display_str[i-2] & 0x2) * 16 + (display_str[i-2] & 0x4) * 4 + (display_str[i-2] & 0x8)) | (VPORTB_OUT & DISP_DRIVER_PORTMASK);
             }
             
             //set cathode driver
-            VPORTC_OUT = i << 4;
+            //VPORTC_OUT = i << 4;
+            uint8_t decoder_mask = (i & 0x1) * 32 + (i & 0x2) * 64 + (i & 0x8) * 8; //too much fun working this out
+            VPORTA_OUT = decoder_mask | (VPORTA_OUT & DISP_DECODER_PORTMASK);
+            
+            if ((i & 0x4) > 0)
+                DecD3_SetHigh();
+            else 
+                DecD3_SetLow();
+                
             
             DELAY_microseconds(700);
             
@@ -369,14 +394,14 @@ int main(void)
         
         
         //calculate next excerpt
-        if (display_str_len > 14 && RTC.CNT - display_last_shift > 15 )
+        if (display_str_len > 14 && RTC.CNT - display_last_shift > 500 )
         {
             uint8_t diff = display_str - &display_array[0];
             if(diff == 0)
             {
                 display_shift_dir = true;
             }
-            else if (diff == display_str_len)
+            else if (diff == (display_str_len - 14))
             {
                 display_shift_dir = false;
             }
@@ -397,17 +422,23 @@ int main(void)
         
         ////Keyboard logic
         //check Data available
-        if (DEncDAvail_GetValue())
+        if (DEncDOutAvail_GetValue())
         {
             //set output enable
-            DEncDOutEnable_SetHigh();
+            DEncDOutEnable_SetLow();
             
             //wait? propagation delay: max 250ns
-            //DELAY_microseconds(1);
-            
+            DELAY_microseconds(1);
+            uint8_t tempInt = DEncDOutA_GetValue() >> 1;
+            tempInt |= DEncDOutB_GetValue() >> 6;
+            tempInt |= DEncDOutC_GetValue() << 2;
+            tempInt |= DEncDOutD_GetValue();
+            tempInt |= DEncDOutE_GetValue() << 4;            
             //read inputs
-            //write to UART     
-            printf("KeyIn;%x\n", (VPORTD_IN & DENC_INPT_bm) >> 2);
+            //write to UART 
+            DEncDOutEnable_SetHigh();
+            
+            printf("KeyIn;%x\n", tempInt);
         }
         
         ////Serial logic
@@ -446,6 +477,8 @@ int main(void)
                         else 
                         {
                             display_array[i] = buffer[i] - '0';
+                            if (display_array[i] > '9' - '0')
+                                display_array[i] = 0x0a;
                         }
                         
                         buffer[i] = '\0';
@@ -489,9 +522,18 @@ int main(void)
             {
                 brightness_factor = atoi(buffer);
             }
+            else if (strcmp(command, "SetBrTest") == 0)
+            {
+                brightness_test = atof(buffer);
+            }
+            else if (strcmp(command, "GetLDR") == 0)
+            {
+                printf("%d",ADC0_GetConversion(ADC_MUXPOS_AIN0_gc) );
+            }
             else if (strcmp(command, "SetShtComp") == 0)
             {
                 RPI_state = RPI_shut_down;
+                time(&rpi_os_shutdown_complete);
             }
             else if (strcmp(command, "SetSleep") == 0)
             {
@@ -511,6 +553,18 @@ int main(void)
                 else
                 {
                     BckConv_EN_SetLow();
+                }
+            }
+            else if (strcmp(command, "SetBacklight") == 0)
+            {
+                
+                if ( strsep(&buffer, ";")[0] == '1')
+                {
+                    Backlight_EN_SetHigh();
+                }
+                else
+                {
+                    Backlight_EN_SetLow();
                 }
             }
             else if (strcmp(command, "GetTime") == 0)
@@ -537,7 +591,8 @@ int main(void)
             
             //set brightness
             //TODO: formula correction
-            TCA0.SINGLE.CMP0 = TCA0.SINGLE.PER * ((LDR_res/UINT8_MAX) * 1/brightness_factor);
+//            TCA0.SINGLE.CMP0 = TCA0.SINGLE.PER * ((LDR_res/UINT8_MAX) * 1/brightness_factor);
+            TCA0.SINGLE.CMP0 = TCA0.SINGLE.PER * brightness_test;
         }
         
         
@@ -570,7 +625,13 @@ int main(void)
             time_t temp_time;
             time(&temp_time);
             
-            if (difftime(temp_time, shutdown_timestamp) > 1800)
+            if (difftime(temp_time, rpi_os_shutdown_complete) > 3 && RPI_RUN_GetValue())
+            {
+                RPI_RUN_SetLow(); //Set RPI.Global_EN
+                rpi_os_shutdown_complete = UINT32_MAX;
+            }
+            
+            if (difftime(temp_time, shutdown_timestamp) > 20) //1800
             {
                 //complete shutdown
                 BckConv_EN_SetLow();
