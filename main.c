@@ -82,7 +82,7 @@ uint8_t button_states;
 #define KeySwitchBbm 0x20;
 
 
-
+//TODO: remove startHigh from RPI_RUN!
 
 struct LED {
     uint8_t     freq;
@@ -400,7 +400,7 @@ int main(void)
             if(diff == 0)
             {
                 display_shift_dir = true;
-            }
+            }  
             else if (diff == (display_str_len - 14))
             {
                 display_shift_dir = false;
@@ -627,7 +627,7 @@ int main(void)
             
             if (difftime(temp_time, rpi_os_shutdown_complete) > 3 && RPI_RUN_GetValue())
             {
-                RPI_RUN_SetLow(); //Set RPI.Global_EN
+                //RPI_RUN_SetLow(); //Set RPI.Global_EN
                 rpi_os_shutdown_complete = UINT32_MAX;
             }
             
