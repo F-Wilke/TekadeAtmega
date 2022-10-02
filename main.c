@@ -193,7 +193,7 @@ bool UART_ReadLine(char* buffer)
     while(USART1_IsRxReady())
     {        
         c = USART1_Read();
-        printf("%d%c", c, c);
+        //printf("%d%c", c, c);
         if(c != '\n' && c != '\r')
         {
             buffer[index++] = c;
@@ -448,18 +448,18 @@ int main(void)
         if (UART_ReadLine(buffer))
         {
             //evaluate command
-            printf("\nBuffer:");            
-            printf(buffer);
+            //printf("\nBuffer:");            
+            // printf(buffer);
             command = strsep(&buffer, ";");
-            printf("\nCommand:");            
-            printf(command);
-            printf("\nVars:");
-            printf(buffer);
+            // printf("\nCommand:");            
+            // printf(command);
+            // printf("\nVars:");
+            // printf(buffer);
             
             if (strcmp(command, "SetNum") == 0)
             {
-                    printf("\nBuffer: ");
-                    printf(buffer);
+                    // printf("\nBuffer: ");
+                    // printf(buffer);
                     bool end_reached = 0;
                     
                     for (int i = 0; i<MAX_DISPLAY_STR_LEN; i++)        
@@ -497,16 +497,16 @@ int main(void)
                 //SetLED;G;1;0
                 switch (strsep(&buffer, ";")[0]) 
                 {
-                    case 'R':
+                    case '0':
                         setup_LED(&LED_R, buffer);
                         break;
-                    case 'Y':
+                    case '1':
                         setup_LED(&LED_Y, buffer);
                         break;
-                    case 'G':
+                    case '2':
                         setup_LED(&LED_G, buffer);
                         break;
-                    case 'S':
+                    case '3':
                         setup_LED(&LED_S, buffer);
                         break;
                 }                
@@ -514,9 +514,11 @@ int main(void)
             else if (strcmp(command, "SetTime") == 0)
             {
                 time_t temp_time;
-                ctime_r(&temp_time, buffer);                
+                // ctime_r(&temp_time, buffer);     
+                int year, month, day, hour, minute, second;
+                if (sscanf(&buffer, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) != EOF)
+                    set_system_time(temp_time);
                 
-                set_system_time(temp_time);
             }
             else if (strcmp(command, "SetBrFac") == 0)
             {
@@ -528,7 +530,7 @@ int main(void)
             }
             else if (strcmp(command, "GetLDR") == 0)
             {
-                printf("%d",ADC0_GetConversion(ADC_MUXPOS_AIN0_gc) );
+                printf("200;GetLDR;%d",ADC0_GetConversion(ADC_MUXPOS_AIN0_gc) );
             }
             else if (strcmp(command, "SetShtComp") == 0)
             {
@@ -571,7 +573,7 @@ int main(void)
             {
                 time_t temp_time;
                 time(&temp_time);
-                printf(ctime(&temp_time));
+                printf("200;GetTime;" + ctime(&temp_time));
             }
             
             buffer_array[0] = '\0';
