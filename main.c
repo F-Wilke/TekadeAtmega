@@ -132,11 +132,11 @@ void handle_PWR_BTN_Press(void)
     if (RPI_state == RPI_active)
     {
         //button pressed
-        printf("PWRBTN_SLEEP\n");                    
+        printf("PWRBTN_SLEEP\r\n");                    
     }
     else if (RPI_state == RPI_sleep)
     {
-        printf("PWRBTN_WAKEUP\n");                    
+        printf("PWRBTN_WAKEUP\r\n");                    
     }
     else if (RPI_state == RPI_shut_down)
     {
@@ -150,11 +150,11 @@ void handle_KeyS_A_change(void)
 {
     if (KeyS_A_GetValue())
     {
-        printf("KeyS_A;1\n");
+        printf("KeyS_A;1\r\n");
     }
     else
     {
-        printf("KeyS_A;0\n");
+        printf("KeyS_A;0\r\n");
     }
 }
 
@@ -162,11 +162,11 @@ void handle_KeyS_B_change(void)
 {
     if (KeyS_B_GetValue())
     {
-        printf("KeyS_B;1\n");
+        printf("KeyS_B;1\r\n");
     }
     else
     {
-        printf("KeyS_B;0\n");    
+        printf("KeyS_B;0\r\n");    
     }
 }
 
@@ -174,11 +174,11 @@ void handle_IGN_SNS_change(void)
 {
     if (IGN_SNS_GetValue())
     {
-        printf("IGN_SNS;1\n");
+        printf("IGN_SNS;1\r\n");
     }
     else
     {
-        printf("IGN_SNS;0\n");
+        printf("IGN_SNS;0\r\n");
         
         //save timestamp if ignition low
         time(&shutdown_timestamp);
@@ -192,7 +192,7 @@ bool UART_ReadLine(char* buffer)
     uint8_t index = 0;
     while(USART1_IsRxReady())
     {        
-        c = USART1_Read();
+          c = USART1_Read();
         //printf("%d%c", c, c);
         if(c != '\n' && c != '\r')
         {
@@ -347,6 +347,8 @@ int main(void)
 
             clock_array[0] = disp_tm_ptr->tm_hour / 10;
             clock_array[1] = disp_tm_ptr->tm_hour % 10;
+            //clock_array[0] = 10;
+            //clock_array[1] = 10;
             
             clock_minutes = 0;
         }
@@ -357,6 +359,9 @@ int main(void)
 
             clock_array[0] = disp_tm_ptr->tm_min / 10;
             clock_array[1] = disp_tm_ptr->tm_min % 10;
+            //clock_array[0] = 10;
+            //clock_array[1] = 10;
+            
             
             clock_minutes = 1;
         }
@@ -438,7 +443,7 @@ int main(void)
             //write to UART 
             DEncDOutEnable_SetHigh();
             
-            printf("KeyIn;%x\n", tempInt);
+            printf("KeyIn;%x\r\n", tempInt);
         }
         
         ////Serial logic
@@ -448,17 +453,17 @@ int main(void)
         if (UART_ReadLine(buffer))
         {
             //evaluate command
-            //printf("\nBuffer:");            
+            //printf("\r\nBuffer:");            
             // printf(buffer);
             command = strsep(&buffer, ";");
-            // printf("\nCommand:");            
+            // printf("\r\nCommand:");            
             // printf(command);
-            // printf("\nVars:");
+            // printf("\r\nVars:");
             // printf(buffer);
             
             if (strcmp(command, "SetNum") == 0)
             {
-                    // printf("\nBuffer: ");
+                    // printf("\r\nBuffer: ");
                     // printf(buffer);
                     bool end_reached = 0;
                     
@@ -514,11 +519,20 @@ int main(void)
             else if (strcmp(command, "SetTime") == 0)
             {
                 time_t temp_time;
+                struct tm * time_struct;
                 // ctime_r(&temp_time, buffer);     
                 int year, month, day, hour, minute, second;
-                if (sscanf(&buffer, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) != EOF)
+                if (sscanf  (buffer, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) != EOF)
+                {
+                    time_struct->tm_year = year;
+                    time_struct->tm_mon = month;
+                    time_struct->tm_mday = day;
+                    time_struct->tm_hour = hour;
+                    time_struct->tm_min = minute;
+                    time_struct->tm_sec = second;
+                    temp_time = mktime(&time_struct);
                     set_system_time(temp_time);
-                
+                }
             }
             else if (strcmp(command, "SetBrFac") == 0)
             {
@@ -573,7 +587,8 @@ int main(void)
             {
                 time_t temp_time;
                 time(&temp_time);
-                printf("200;GetTime;" + ctime(&temp_time));
+                //printf("200;GetTime;" + ctime(&temp_time));
+                printf(strcat("200;GetTime;", ctime(&temp_time)));
             }
             
             buffer_array[0] = '\0';
