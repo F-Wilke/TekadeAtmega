@@ -32,7 +32,7 @@
 #define MAX_VOL 5.0 // VREF=2.5V
 
 #define MAX_BUFFER_SIZE 64
-#define MAX_COMMAND_SIZE 16
+//#define MAX_COMMAND_SIZE 16
 #define MAX_VAR_SIZE 240
 
 #define MAX_DISPLAY_STR_LEN 24
@@ -104,8 +104,15 @@ struct LED LED_S = {0,0,0,0,0, 0x04, &PORTE_OUTSET};
 char buffer_array[MAX_BUFFER_SIZE];
 char* buffer = &buffer_array[0];
 
-char command_array[MAX_COMMAND_SIZE];
-char* command = &command_array[0];
+//char command_array[MAX_COMMAND_SIZE];
+//char* command = &command_array[0];
+char command = 0;
+
+uint8_t uart_read_index = 0;
+
+uint16_t nextKeyThresh = 0;
+uint8_t minKeyStrokeDifference = 250;
+uint8_t nextKeyWrapped = 2; //0: not wrapped; 1: wrapped; 2: wrapped more than once -> don't compare RTC.CNT
 
 void handle_RTC_overflow(void)
 {
@@ -116,6 +123,11 @@ void handle_RTC_overflow(void)
     LED_G.clock_wrapped = LED_G.enable;
     
     LED_S.clock_wrapped = LED_S.enable;    
+    
+    nextKeyWrapped += 1;
+    
+    if (nextKeyWrapped == 3)
+        nextKeyWrapped = 2;
     
     display_last_shift = -(UINT16_MAX - display_last_shift);
     
@@ -175,7 +187,7 @@ void handle_IGN_SNS_change(void)
     if (IGN_SNS_GetValue())
     {
         printf("IGN_SNS;1\r\n");
-    }
+    }     
     else
     {
         printf("IGN_SNS;0\r\n");
@@ -186,28 +198,29 @@ void handle_IGN_SNS_change(void)
 }
 
 //Serial handling
-bool UART_ReadLine(char* buffer)
+bool UART_ReadLine(char* buff)
 {
     uint8_t c;
-    uint8_t index = 0;
+    
     while(USART1_IsRxReady())
     {        
-          c = USART1_Read();
+        c = USART1_Read();
         //printf("%d%c", c, c);
         if(c != '\n' && c != '\r')
         {
-            buffer[index++] = c;
-            if(index > MAX_BUFFER_SIZE)
+            buff[uart_read_index++] = c;
+            if(uart_read_index > MAX_BUFFER_SIZE)
             {
-                index = 0;
+                uart_read_index = 0;
             }
         }
-        
-        if(c == '\n')
+        //printf(buff);
+        //printf("\r\n");
+        if(((c == '\n') || (c == '\r' )) && (uart_read_index > 0))
         {
-            buffer[index] = '\0';
+            buff[uart_read_index] = '\0';
             
-            index = 0;
+            uart_read_index = 0;
             
             return true;                     
         }
@@ -443,7 +456,14 @@ int main(void)
             //write to UART 
             DEncDOutEnable_SetHigh();
             
-            printf("KeyIn;%x\r\n", tempInt);
+            
+            if ( nextKeyWrapped == 2 || ( RTC.CNT > nextKeyThresh && nextKeyWrapped > 0))
+            {
+                printf("KeyIn;%x\r\n", tempInt);
+                
+                nextKeyThresh = (RTC.CNT + minKeyStrokeDifference) % RTC.PER;
+                nextKeyWrapped = nextKeyThresh > RTC.CNT ? 1 : 0;
+            }
         }
         
         ////Serial logic
@@ -454,15 +474,17 @@ int main(void)
         {
             //evaluate command
             //printf("\r\nBuffer:");            
-            // printf(buffer);
-            command = strsep(&buffer, ";");
-            // printf("\r\nCommand:");            
-            // printf(command);
-            // printf("\r\nVars:");
-            // printf(buffer);
+            //printf(buffer);
+            command = buffer[0];
+            buffer += 2;//hop <command>;
+            //printf("\r\nCommand:");            
+            //printf(&command);
+            //printf("\r\nVars:");
+            //printf(buffer);
             
-            if (strcmp(command, "SetNum") == 0)
+            if (command == '0')
             {
+                //setNum
                     // printf("\r\nBuffer: ");
                     // printf(buffer);
                     bool end_reached = 0;
@@ -492,12 +514,13 @@ int main(void)
                     display_str = &display_array[0];
                     
             }
-            else if (strcmp(command, "SetSignal") == 0)
+            else if (command == '1')
             {
+                //SetSignal
                 signal_strength = atoi(buffer);
                 signal_strength_changed = true;
             }   
-            else if (strcmp(command, "SetLED") == 0)
+            else if (command == '2')
             {
                 //SetLED;G;1;0
                 switch (strsep(&buffer, ";")[0]) 
@@ -516,8 +539,9 @@ int main(void)
                         break;
                 }                
             }
-            else if (strcmp(command, "SetTime") == 0)
+            else if (command == '3')
             {
+                //SetTime
                 time_t temp_time;
                 struct tm * time_struct;
                 // ctime_r(&temp_time, buffer);     
@@ -530,37 +554,44 @@ int main(void)
                     time_struct->tm_hour = hour;
                     time_struct->tm_min = minute;
                     time_struct->tm_sec = second;
-                    temp_time = mktime(&time_struct);
+                    temp_time = mktime(time_struct);
                     set_system_time(temp_time);
                 }
             }
-            else if (strcmp(command, "SetBrFac") == 0)
+            else if (command == '4')
             {
+                //SetBrFac
                 brightness_factor = atoi(buffer);
             }
-            else if (strcmp(command, "SetBrTest") == 0)
+            else if (command == '5')
             {
+                //SetBrTest
                 brightness_test = atof(buffer);
             }
-            else if (strcmp(command, "GetLDR") == 0)
+            else if (command == '6')
             {
+                //GetLDR
                 printf("200;GetLDR;%d",ADC0_GetConversion(ADC_MUXPOS_AIN0_gc) );
             }
-            else if (strcmp(command, "SetShtComp") == 0)
+            else if (command == '7')
             {
+                //SetShtComp
                 RPI_state = RPI_shut_down;
                 time(&rpi_os_shutdown_complete);
             }
-            else if (strcmp(command, "SetSleep") == 0)
+            else if (command == '8')
             {
+                //SetSleep
                 RPI_state = RPI_sleep;
             }
-            else if (strcmp(command, "SetActive") == 0)
+            else if (command == '9')
             {
+                //SetActive
                 RPI_state = RPI_active;
             }
-            else if (strcmp(command, "SetBckConv_EN") == 0)
+            else if (command == 'A')
             {
+                //SetBckConv_EN
                 //if (strcmp(strsep(&buffer, ";")[0],"1") == 0)
                 if ( strsep(&buffer, ";")[0] == '1')
                 {
@@ -571,9 +602,9 @@ int main(void)
                     BckConv_EN_SetLow();
                 }
             }
-            else if (strcmp(command, "SetBacklight") == 0)
+            else if (command == 'B')
             {
-                
+                //SetBacklight
                 if ( strsep(&buffer, ";")[0] == '1')
                 {
                     Backlight_EN_SetHigh();
@@ -583,16 +614,23 @@ int main(void)
                     Backlight_EN_SetLow();
                 }
             }
-            else if (strcmp(command, "GetTime") == 0)
+            else if (command == 'C')
             {
+                //GetTime
                 time_t temp_time;
                 time(&temp_time);
                 //printf("200;GetTime;" + ctime(&temp_time));
                 printf(strcat("200;GetTime;", ctime(&temp_time)));
             }
+            else if (command == 'D')
+            {
+                //SetKeyInterval
+                minKeyStrokeDifference = atoi(buffer);
+            }
             
+            //printf("rst\r\n");
             buffer_array[0] = '\0';
-            buffer = &buffer_array[0];
+            buffer = &buffer_array[0];           
             
         }
         
