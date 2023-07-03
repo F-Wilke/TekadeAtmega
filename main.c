@@ -192,9 +192,6 @@ void handle_IGN_SNS_change(void)
     else
     {
         printf("IGN_SNS;0\r\n");
-        
-        //save timestamp if ignition low
-        time(&shutdown_timestamp);
     }
 }
 
@@ -681,13 +678,14 @@ int main(void)
             time_t temp_time;
             time(&temp_time);
             
-            if ( rpi_os_shutdown_complete != UINT32_MAX && temp_time - 3 > rpi_os_shutdown_complete && RPI_RUN_GetValue())
+            if ( rpi_os_shutdown_complete != UINT32_MAX && temp_time > rpi_os_shutdown_complete + 75 && RPI_RUN_GetValue())
             {
-                //RPI_RUN_SetLow(); //Set RPI.Global_EN
+                RPI_RUN_SetLow(); //Set RPI.Global_EN
                 rpi_os_shutdown_complete = UINT32_MAX;
+                time(&shutdown_timestamp);
             }
             
-            if (difftime(temp_time, shutdown_timestamp) > 20 && !RPI_RUN_GetValue()) //1800
+            if (shutdown_timestamp != UINT32_MAX && temp_time > shutdown_timestamp + 20 && !RPI_RUN_GetValue()) //1800
             {
                 //complete shutdown
                 BckConv_EN_SetLow();
