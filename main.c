@@ -74,7 +74,7 @@ uint8_t RPI_state;
 
 
 time_t shutdown_timestamp = UINT32_MAX;
-time_t rpi_os_shutdown_complete = UINT32_MAX;
+time_t rpi_os_shutdown_complete = 0xFFFFFFFF ;//UINT32_MAX;
 
 uint8_t button_states;
 #define PowerButtonbm 0x08;
@@ -82,7 +82,7 @@ uint8_t button_states;
 #define KeySwitchBbm 0x20;
 
 
-//TODO: remove startHigh from RPI_RUN!
+//TODO: remove startHigh from RPI_RUN if desired
 
 struct LED {
     uint8_t     freq;
@@ -152,9 +152,10 @@ void handle_PWR_BTN_Press(void)
     }
     else if (RPI_state == RPI_shut_down)
     {
-        RPI_RUN_SetHigh();
+        RPI_RUN_SetHigh(); 
         rpi_os_shutdown_complete = UINT32_MAX;
         //TODO: necessary timespan  for boot?
+        
     }
 }
 
@@ -680,13 +681,13 @@ int main(void)
             time_t temp_time;
             time(&temp_time);
             
-            if (difftime(temp_time, rpi_os_shutdown_complete) > 3 && RPI_RUN_GetValue())
+            if ( rpi_os_shutdown_complete != UINT32_MAX && temp_time - 3 > rpi_os_shutdown_complete && RPI_RUN_GetValue())
             {
                 //RPI_RUN_SetLow(); //Set RPI.Global_EN
                 rpi_os_shutdown_complete = UINT32_MAX;
             }
             
-            if (difftime(temp_time, shutdown_timestamp) > 20) //1800
+            if (difftime(temp_time, shutdown_timestamp) > 20 && !RPI_RUN_GetValue()) //1800
             {
                 //complete shutdown
                 BckConv_EN_SetLow();
