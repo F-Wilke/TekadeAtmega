@@ -51,10 +51,10 @@ Other available configurations include `Simulator`.
 
 ## UART command interface
 
-`main.c` implements a simple line-based UART protocol at **115200 baud**. Commands are parsed as:
+`main.c` implements a simple line-based UART protocol at **115200 baud**. Commands are sent as a command followed by zero or more semicolon-separated arguments:
 
 ```text
-<command>;<payload>\r\n
+<command>[;<arg1>[;<arg2>...]]\r\n
 ```
 
 Observed commands in the current source:
