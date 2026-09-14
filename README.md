@@ -4,7 +4,7 @@ Firmware project for an **ATmega4809** built with **MPLAB X**, **XC8**, and **MP
 
 ## Overview
 
-This repository contains a single-board firmware application with Microchip-generated support code under `mcc_generated_files/` and application logic in `/home/runner/work/TekadeAtmega/TekadeAtmega/main.c`.
+This repository contains a single-board firmware application with Microchip-generated support code under `mcc_generated_files/` and application logic in `main.c`.
 
 From the current source, the firmware is responsible for:
 
@@ -18,11 +18,11 @@ From the current source, the firmware is responsible for:
 
 ## Repository layout
 
-- `/home/runner/work/TekadeAtmega/TekadeAtmega/main.c` - main application logic
-- `/home/runner/work/TekadeAtmega/TekadeAtmega/mcc_generated_files/` - MCC-generated peripheral setup and drivers
-- `/home/runner/work/TekadeAtmega/TekadeAtmega/nbproject/` - MPLAB X project metadata and generated makefiles
-- `/home/runner/work/TekadeAtmega/TekadeAtmega/Makefile` - top-level MPLAB X make entry point
-- `/home/runner/work/TekadeAtmega/TekadeAtmega/ATMEGA4809Test.mc3` - MCC configuration
+- `main.c` - main application logic
+- `mcc_generated_files/` - MCC-generated peripheral setup and drivers
+- `nbproject/` - MPLAB X project metadata and generated makefiles
+- `Makefile` - top-level MPLAB X make entry point
+- `ATMEGA4809Test.mc3` - MCC configuration
 
 ## Toolchain and project settings
 
@@ -33,7 +33,7 @@ The checked-in MPLAB X project is configured for:
 - device pack: **ATmega_DFP 2.3.126**
 - project name: **ATMEGA4809Test**
 
-These values come from `/home/runner/work/TekadeAtmega/TekadeAtmega/nbproject/configurations.xml` and `/home/runner/work/TekadeAtmega/TekadeAtmega/nbproject/project.xml`.
+These values come from `nbproject/configurations.xml` and `nbproject/project.xml`.
 
 ## Building
 
